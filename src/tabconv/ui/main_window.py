@@ -34,6 +34,7 @@ from ..core.models import Dataset, ExportOptions, ImportOptions
 from ..core.transforms import ConvertDecimalSeparator, RemoveColumns, ReplaceText
 from ..core.transforms.base import Operation
 from .batch_load_worker import BatchLoadWorker
+from .batch_export_worker import BatchExportWorker
 from .export_worker import ExportWorker
 from .history_worker import HistoryWorker
 from .table_model import DatasetTableModel
@@ -206,6 +207,12 @@ class MainWindow(QMainWindow):
         self.export_button.clicked.connect(self.export_current)
         self.export_button.setEnabled(False)
         controls.addWidget(self.export_button)
+        self.export_all_button = QPushButton("Export all files…")
+        self.export_all_button.clicked.connect(self.export_all)
+        self.export_all_button.setEnabled(False)
+        controls.addWidget(self.export_all_button)
+        self.remove_converted = QCheckBox("Remove _converted from filenames")
+        controls.addWidget(self.remove_converted)
         controls.addStretch()
         hint = QLabel(
             "Choose one or more files or drop CSV, TSV, or TXT files anywhere in this window."
@@ -283,6 +290,8 @@ class MainWindow(QMainWindow):
             "Columns to remove": "Colunas para remover",
             "Remove selected column": "Remover coluna selecionada",
             "Export processed data…": "Exportar dados processados…",
+            "Export all files…": "Exportar todos os arquivos…",
+            "Remove _converted from filenames": "Remover _converted dos nomes dos arquivos",
             "Choose a file or drop a CSV, TSV, or TXT file anywhere in this window.": "Escolha ou arraste um arquivo CSV, TSV ou TXT para esta janela.",
             "Open or drop a tabular text file to see its preview.": "Abra ou arraste um arquivo de texto tabular para ver a prévia.",
             "No file selected": "Nenhum arquivo selecionado",
@@ -413,6 +422,7 @@ class MainWindow(QMainWindow):
         self.empty.setVisible(False)
         self.file_tabs.setVisible(True)
         self.export_button.setEnabled(True)
+        self.export_all_button.setEnabled(True)
         self.statusBar().showMessage("Preview ready")
 
     def _refresh_view(self) -> None:
@@ -460,6 +470,7 @@ class MainWindow(QMainWindow):
         self._set_transform_controls_enabled(can_transform)
         self.remove_columns.setEnabled(can_transform and bool(processed.columns))
         self.export_button.setEnabled(self._history_thread is None and self._export_thread is None)
+        self.export_all_button.setEnabled(self._history_thread is None and self._export_thread is None)
 
     def _sync_column_choices(self, columns: tuple[str, ...]) -> None:
         if columns == self._column_names:
@@ -647,13 +658,18 @@ class MainWindow(QMainWindow):
             current_index = max(self.file_tabs.currentIndex(), 0)
             source = self._current_dataset[current_index].source
             if source is not None:
-                initial = f"{source.stem}_converted"
+                initial = (
+                    source.stem if self.remove_converted.isChecked()
+                    else f"{source.stem}_converted"
+                )
         name, selected_filter = QFileDialog.getSaveFileName(
             self, "Export processed data", initial, filters
         )
         if not name:
             return
         path = Path(name)
+        if self.remove_converted.isChecked() and path.stem.endswith("_converted"):
+            path = path.with_name(path.stem[:-len("_converted")] + path.suffix)
         suffixes = {
             "CSV (*.csv)": ".csv",
             "TSV (*.tsv)": ".tsv",
@@ -691,6 +707,70 @@ class MainWindow(QMainWindow):
                 return
             overwrite = True
         self._start_export(path, options, overwrite)
+
+    def export_all(self) -> None:
+        datasets = self._current_dataset
+        if not datasets or self._export_thread is not None or self._history_thread is not None:
+            return
+        output_dir = QFileDialog.getExistingDirectory(self, "Export all processed files")
+        if not output_dir:
+            return
+        suffix_options = {
+            ".csv": ExportOptions(delimiter=","),
+            ".tsv": ExportOptions(delimiter="\t"),
+            ".txt": ExportOptions(delimiter=" "),
+        }
+        if any(dataset.source is None for dataset in datasets):
+            QMessageBox.warning(self, "Export all files", "A source filename is missing.")
+            return
+        output_path = Path(output_dir)
+        targets = []
+        for dataset in datasets:
+            source = dataset.source
+            assert source is not None
+            stem = source.stem
+            if not self.remove_converted.isChecked():
+                stem += "_converted"
+            targets.append(output_path / f"{stem}{source.suffix.lower()}")
+        if len({target.name.casefold() for target in targets}) != len(targets):
+            QMessageBox.warning(self, "Export all files", "Files from different folders have the same output name.")
+            return
+        if any(target.resolve() == source.resolve() for target in targets for source in self._paths):
+            QMessageBox.warning(self, "Export all files", "The output folder and filenames would overwrite an imported source file.")
+            return
+        existing = [target for target in targets if target.exists()]
+        if existing:
+            answer = QMessageBox.question(
+                self,
+                "Replace existing files?",
+                f"{len(existing)} output file(s) already exist. Replace them?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self._export_thread = QThread(self)
+        worker = BatchExportWorker(
+            datasets,
+            output_path,
+            suffix_options,
+            self.remove_converted.isChecked(),
+        )
+        self._export_worker = worker
+        worker.moveToThread(self._export_thread)
+        self._export_thread.started.connect(worker.run)
+        worker.progress.connect(self.progress_bar.setValue)
+        worker.succeeded.connect(
+            lambda count: self.statusBar().showMessage(f"Exported {count} files to {output_dir}")
+        )
+        worker.failed.connect(self._export_failed)
+        worker.cancelled.connect(lambda: self.statusBar().showMessage("Export cancelled"))
+        worker.finished.connect(self._export_thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        self._export_thread.finished.connect(self._clear_export_thread)
+        self._export_thread.finished.connect(self._export_thread.deleteLater)
+        self._show_progress(indeterminate=False)
+        self.progress_bar.setValue(0)
+        self._export_thread.start()
 
     def _export_options(self, suffix: str) -> ExportOptions | None:
         if suffix == ".xlsx":

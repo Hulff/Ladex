@@ -1,9 +1,10 @@
 # Tabular Text Converter
 
-TabConv is an offline desktop app for previewing and cleaning CSV, TSV, and whitespace-delimited
-text. It keeps imported values as strings and never changes the source during import or processing.
+TabConv is an offline desktop app and command-line tool for previewing and cleaning CSV, TSV, and
+plain-text tables. Imported values stay as strings, and importing or transforming data never edits
+the source files.
 
-## Run and develop
+## Install and run
 
 Python 3.11 or newer is required.
 
@@ -14,24 +15,46 @@ python -m pip install -e '.[dev]'
 tabconv-gui
 ```
 
-On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1` and run `tabconv-gui`.
-The CLI can inspect an input file with `tabconv example.txt`.
+On Windows PowerShell, activate the environment with `.venv\\Scripts\\Activate.ps1`.
 
-## Features
+To inspect a file from the command line, run `tabconv path/to/file.csv`. The GUI opens from the
+application menu or by running `tabconv-gui`.
 
-- Open or drop one or more CSV, TSV, and TXT files; select delimiter, encoding, and header behavior.
-- Preview each file separately, even when files have different row counts or columns.
-- Apply corrections to matching column names across the batch; deleting a name removes all columns
-  with that name from every file. Export applies to the currently selected file.
-- Resolve inconsistent rows by padding short rows, truncating to the first row's width, or cancelling.
-- Replace literal text, convert decimal separators in numeric values, and remove columns.
-- Preview original or processed data, see changed cells, and inspect/undo/redo/reset operations.
-- Export to CSV, TSV, TXT, or XLSX. Text export supports delimiter, header, line ending, and encoding.
-- Import, transforms, and exports run outside the UI thread; long imports and exports can be cancelled.
-- Exports are written to a temporary file and only moved into place after success. Existing files,
-  including the imported source, require an explicit confirmation in the UI.
+## Desktop app
 
-## Tests and checks
+- Choose **English (US)** or **Português (Brasil)** in the Language selector.
+- Open one or more CSV, TSV, or TXT files with **Open file(s)…**, or drag them into the window.
+- Set the delimiter, text encoding, and whether the first row contains column names. Delimiter and
+  encoding changes reload the selected files.
+- Preview files in separate tabs. Files can have different columns and row counts.
+- Use **Processed** and **Original** to switch the preview. Changed cells are highlighted in the
+  processed view.
+- Apply text replacement, decimal separator conversion, or column removal to the batch. When a
+  column is selected, operations target that column name in every file where it appears.
+- Use **Undo**, **Redo**, and **Reset changes** to manage the shared transformation history.
+- **Export processed data…** exports the file shown in the current tab. **Export all files…** writes
+  every processed file into a folder you choose, keeping each input file's CSV, TSV, or TXT format.
+- The **Remove `_converted` from filenames** option controls whether exports get the default
+  `_converted` filename suffix. Batch export checks for duplicate output names, protects imported
+  source files, and asks before replacing existing output files.
+- Single-file text export lets you choose delimiter, header inclusion, line ending, and encoding.
+  XLSX is available for single-file export.
+- Imports, transformations, and exports run outside the UI thread. A Cancel button appears while
+  import or export work is running.
+
+Rows with inconsistent field counts prompt you to pad short rows, truncate rows to the first row's
+width, or cancel the import. The original files remain unchanged.
+
+## Command-line usage
+
+```sh
+tabconv path/to/input.csv
+```
+
+The command-line interface reports the detected table structure and parsing issues. Use
+`tabconv --help` to see available options.
+
+## Development checks
 
 ```sh
 pytest
@@ -40,22 +63,19 @@ ruff check .
 mypy src/tabconv
 ```
 
-The slow test parses 100,000 rows and reports elapsed time. The table view is virtualized, while
-the current parser retains the full dataset in memory; very large files are therefore bounded by
-available memory rather than streamed from disk.
+The slow test parses 100,000 rows and reports elapsed time. The table view is virtualized, but the
+parser retains imported datasets in memory, so very large inputs are limited by available memory.
 
-## Windows build
+## Build desktop packages
 
-On Windows, install the project and run:
+On Windows, install the development dependencies and run:
 
 ```powershell
 py -m pip install -e '.[dev]'
-.\scripts\build-windows.ps1
+.\\scripts\\build-windows.ps1
 ```
 
-This creates `dist\TabConv.exe`. The GitHub Actions workflow builds and smoke-tests it on Windows.
-
-## Linux and AppImage build
+This creates `dist\\TabConv.exe`.
 
 On Linux, install the project and PyInstaller, then run:
 
@@ -64,53 +84,6 @@ python -m pip install -e '.[dev]'
 ./scripts/build-linux.sh
 ```
 
-This creates `dist/TabConv` and `dist/TabConv.AppDir`. If `appimagetool` is installed or
-`APPIMAGETOOL` points to it, the script also creates `dist/TabConv-x86_64.AppImage`. The Linux
-workflow builds both artifacts on Ubuntu and uploads them.
-
-## Arch Linux desktop entry
-
-Install Python and the usual build tools (`python`, `python-pip`, and `base-devel`), create a
-virtual environment, and install TabConv as above. To add the AppImage to the application menu,
-make it executable and create `~/.local/share/applications/tabconv.desktop`:
-
-```ini
-[Desktop Entry]
-Name=Tabular Text Converter
-Exec=/absolute/path/to/TabConv-x86_64.AppImage
-Icon=/absolute/path/to/tabconv.svg
-Terminal=false
-Type=Application
-Categories=Office;Utility;
-```
-
-Use the icon at `packaging/tabconv.svg` or copy it to a stable location. Log out and back in, or
-refresh the desktop application database, if the launcher does not appear immediately.
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the core design and remaining limits.
- # Tabular Text Converter
-
- An offline desktop-oriented converter for CSV, TSV, and whitespace-delimited text. It
- includes a desktop import and preview interface, backed by a GUI-independent import core.
-
- ```sh
- python -m pip install -e '.[dev]'
- tabconv example.txt
- tabconv-gui
- pytest
- ruff check .
- mypy src/tabconv
- ```
-
- ## Windows executable
-
- On Windows:
-
- ```powershell
- py -m pip install -e '.[dev]'
- .\scripts\build-windows.ps1
- ```
-
- The result is `dist\TabConv.exe`. It opens the desktop import and preview interface.
- Windows executables cannot be reliably built on Linux with PyInstaller, so the CI job
- uses `windows-latest` and uploads the generated artifact.
+This creates `dist/TabConv` and `dist/TabConv.AppDir`. If `appimagetool` is installed, the script
+also creates an AppImage. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design details and
+current limitations.
