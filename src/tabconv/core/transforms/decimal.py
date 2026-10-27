@@ -5,7 +5,7 @@ from ..errors import InvalidTransformationError
 from ..models import Dataset
 from .replace import _selected_indexes
 
-_NUMBER = re.compile(r"^[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)$")
+_NUMBER = re.compile(r"^[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)(?:[eE][+-]?\d+)?$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,16 +42,16 @@ class ConvertDecimalSeparator:
         leading = value[: len(value) - len(value.lstrip())]
         trailing = value[len(value.rstrip()) :]
         candidate = value.strip()
-        if (
-            self.source_separator not in candidate
-            or candidate.count(self.source_separator) > 1
-        ):
+        mantissa, exponent_separator, exponent = _split_exponent(candidate)
+        if self.source_separator not in mantissa or mantissa.count(self.source_separator) > 1:
             return value
         if not _valid_number(candidate, self.source_separator, self.thousands_separator):
             return value
         if self.thousands_separator:
-            candidate = candidate.replace(self.thousands_separator, "")
-        converted = candidate.replace(self.source_separator, self.target_separator)
+            mantissa = mantissa.replace(self.thousands_separator, "")
+        converted = mantissa.replace(self.source_separator, self.target_separator)
+        if exponent_separator:
+            converted += exponent_separator + exponent
         return f"{leading}{converted}{trailing}"
 
     def to_dict(self) -> dict[str, object]:
@@ -65,6 +65,10 @@ class ConvertDecimalSeparator:
 
 
 def _valid_number(value: str, decimal: str, thousands: str | None) -> bool:
+    mantissa, _, exponent = _split_exponent(value)
+    if value.lower().count("e") > 1 or ("e" in value.lower() and not re.fullmatch(r"[+-]?\d+", exponent)):
+        return False
+    value = mantissa
     if thousands is None:
         return bool(_NUMBER.fullmatch(value))
     signless = value[1:] if value.startswith(("+", "-")) else value
@@ -82,3 +86,11 @@ def _valid_number(value: str, decimal: str, thousands: str | None) -> bool:
     elif not integer.isdigit():
         return False
     return not separator or fraction.isdigit()
+
+
+def _split_exponent(value: str) -> tuple[str, str, str]:
+    for marker in ("e", "E"):
+        if marker in value:
+            mantissa, exponent = value.split(marker, 1)
+            return mantissa, marker, exponent
+    return value, "", ""

@@ -36,6 +36,14 @@ def test_decimal_conversion_honors_thousands_separator() -> None:
     assert result.rows == (("1234,50",), ("bad,12.50",))
 
 
+def test_decimal_conversion_supports_scientific_notation_both_ways() -> None:
+    source = Dataset(("amount",), (("9.64847E-2",), ("242.0",), ("9.14168E-2",)))
+    comma = ConvertDecimalSeparator(".", ",").apply(source)
+    assert comma.rows == (("9,64847E-2",), ("242,0",), ("9,14168E-2",))
+    point = ConvertDecimalSeparator(",", ".").apply(comma)
+    assert point.rows == source.rows
+
+
 def test_remove_columns(dataset: Dataset) -> None:
     result = RemoveColumns((1,)).apply(dataset)
     assert result.columns == ("amount", "code")

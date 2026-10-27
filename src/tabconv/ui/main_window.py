@@ -130,11 +130,6 @@ class MainWindow(QMainWindow):
         form.addRow(self.header)
         controls.addLayout(form)
         controls.addSpacing(12)
-        button = QPushButton("Open file(s)…")
-        button.clicked.connect(self.choose_file)
-        controls.addWidget(button)
-        controls.addSpacing(10)
-
         controls.addWidget(QLabel("Transformations"))
         self.view_mode = QComboBox()
         self.view_mode.addItem("Processed", "processed")
@@ -652,7 +647,10 @@ class MainWindow(QMainWindow):
     def export_current(self) -> None:
         if self._history is None or self._export_thread is not None or self._history_thread is not None:
             return
-        filters = "CSV (*.csv);;TSV (*.tsv);;Text (*.txt);;Excel workbook (*.xlsx)"
+        export_settings = self._export_options()
+        if export_settings is None:
+            return
+        suffix, options, add_converted = export_settings
         initial = "converted"
         if self._current_dataset is not None:
             current_index = max(self.file_tabs.currentIndex(), 0)
@@ -662,28 +660,16 @@ class MainWindow(QMainWindow):
                     source.stem if self.remove_converted.isChecked()
                     else f"{source.stem}_converted"
                 )
-        name, selected_filter = QFileDialog.getSaveFileName(
-            self, "Export processed data", initial, filters
-        )
+        name, _ = QFileDialog.getSaveFileName(self, "Export processed data", initial + suffix)
         if not name:
             return
         path = Path(name)
-        if self.remove_converted.isChecked() and path.stem.endswith("_converted"):
+        if not add_converted and path.stem.endswith("_converted"):
             path = path.with_name(path.stem[:-len("_converted")] + path.suffix)
-        suffixes = {
-            "CSV (*.csv)": ".csv",
-            "TSV (*.tsv)": ".tsv",
-            "Text (*.txt)": ".txt",
-            "Excel workbook (*.xlsx)": ".xlsx",
-        }
-        suffix = suffixes.get(selected_filter, ".csv")
         if not path.suffix:
             path = path.with_suffix(suffix)
-        elif path.suffix.lower() not in suffixes.values():
+        elif path.suffix.lower() != suffix:
             QMessageBox.warning(self, "Export format", "Choose a CSV, TSV, TXT, or XLSX file.")
-            return
-        options = self._export_options(path.suffix.lower())
-        if options is None:
             return
         overwrite = False
         if path.exists():
@@ -772,18 +758,23 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self._export_thread.start()
 
-    def _export_options(self, suffix: str) -> ExportOptions | None:
-        if suffix == ".xlsx":
-            return ExportOptions()
+    def _export_options(self) -> tuple[str, ExportOptions, bool] | None:
         dialog = QDialog(self)
-        dialog.setWindowTitle("Text export options")
+        dialog.setWindowTitle("Export options")
         form = QFormLayout(dialog)
+        format_choice = QComboBox()
+        for label, suffix in (("CSV", ".csv"), ("TSV", ".tsv"), ("Text", ".txt"), ("Excel workbook", ".xlsx")):
+            format_choice.addItem(label, suffix)
+        form.addRow("Format", format_choice)
+        add_converted = QCheckBox("Add _converted to the filename")
+        add_converted.setChecked(not self.remove_converted.isChecked())
+        form.addRow(add_converted)
         delimiter = QComboBox()
         delimiter.addItem("Comma (,)", ",")
         delimiter.addItem("Tab", "\t")
         delimiter.addItem("Semicolon (;) ", ";")
         delimiter.addItem("Space", " ")
-        default = {".tsv": "\t", ".txt": " ", ".csv": ","}[suffix]
+        default = {".tsv": "\t", ".txt": " ", ".csv": ","}[format_choice.currentData()]
         delimiter.setCurrentIndex(max(0, delimiter.findData(default)))
         form.addRow("Delimiter", delimiter)
         include_header = QCheckBox("Include column names")
@@ -797,6 +788,16 @@ class MainWindow(QMainWindow):
         for value in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
             encoding.addItem(value, value)
         form.addRow("Encoding", encoding)
+        text_widgets = (delimiter, include_header, line_ending, encoding)
+
+        def update_format(suffix: str) -> None:
+            for widget in text_widgets:
+                widget.setEnabled(suffix != ".xlsx")
+            delimiter.setCurrentIndex(max(0, delimiter.findData({".tsv": "\t", ".txt": " ", ".csv": ",", ".xlsx": ","}[suffix])))
+
+        format_choice.currentIndexChanged.connect(
+            lambda _index: update_format(format_choice.currentData())
+        )
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -805,12 +806,16 @@ class MainWindow(QMainWindow):
         form.addRow(buttons)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
-        return ExportOptions(
+        suffix = format_choice.currentData()
+        options = ExportOptions(
             delimiter=delimiter.currentData(),
             include_header=include_header.isChecked(),
             line_ending=line_ending.currentData(),
             encoding=encoding.currentData(),
         )
+        if suffix == ".xlsx":
+            options = ExportOptions()
+        return suffix, options, add_converted.isChecked()
 
     def _start_export(
         self, path: Path, options: ExportOptions, overwrite: bool
