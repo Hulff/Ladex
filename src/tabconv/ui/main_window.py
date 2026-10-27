@@ -285,6 +285,7 @@ class MainWindow(QMainWindow):
         worker.loaded.connect(self.show_dataset)
         worker.failed.connect(self.show_error)
         worker.inconsistent.connect(self.resolve_inconsistent_rows)
+        worker.progress.connect(self._load_progress)
         worker.cancelled.connect(self._load_cancelled)
         worker.finished.connect(self._thread.quit)
         worker.finished.connect(worker.deleteLater)
@@ -652,6 +653,12 @@ class MainWindow(QMainWindow):
     def show_error(self, message: str) -> None:
         self.statusBar().showMessage("Could not load file")
         QMessageBox.warning(self, "Could not load file", message)
+
+    def _load_progress(self, rows_read: int) -> None:
+        if self._path is not None:
+            self.statusBar().showMessage(
+                f"Loading {self._path.name}… {rows_read:,} rows read"
+            )
 
     def _load_cancelled(self) -> None:
         self.statusBar().showMessage("Import cancelled")

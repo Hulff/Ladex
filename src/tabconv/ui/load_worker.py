@@ -12,6 +12,7 @@ from ..core.parsing.reader import read_file
 class LoadWorker(QObject):
     loaded = Signal(object)
     failed = Signal(str)
+    progress = Signal(int)
     inconsistent = Signal(object)
     cancelled = Signal()
     finished = Signal()
@@ -29,6 +30,7 @@ class LoadWorker(QObject):
                     self._path,
                     self._options,
                     cancelled=lambda: QThread.currentThread().isInterruptionRequested(),
+                    progress=self.progress.emit,
                 )
             )
         except InconsistentRowsError as error:
@@ -37,5 +39,7 @@ class LoadWorker(QObject):
             self.cancelled.emit()
         except (OSError, TabConvError) as error:
             self.failed.emit(str(error))
+        except Exception as error:  # noqa: BLE001 - make unexpected import failures visible
+            self.failed.emit(f"Could not load {self._path}: {error}")
         finally:
             self.finished.emit()
