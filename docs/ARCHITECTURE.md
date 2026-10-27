@@ -1,6 +1,6 @@
 # Architecture and delivery plan
 
-The application separates a pure-Python `core` from the future PySide6 UI. `Dataset` is
+The application separates a pure-Python `core` from its PySide6 UI. `Dataset` is
 immutable and contains string-only rows; parsing produces a dataset or a typed error.
 Delimiter/encoding detection and quote-aware whitespace tokenization are independently
 testable. A CLI uses the same API, so no data logic depends on Qt.

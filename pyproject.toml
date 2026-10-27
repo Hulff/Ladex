@@ -7,13 +7,21 @@ name = "tabconv"
 version = "0.1.0"
 description = "Offline tabular text converter"
 requires-python = ">=3.11"
+<<<<<<< HEAD
 dependencies = ["charset-normalizer>=3.3"]
+=======
+dependencies = ["charset-normalizer>=3.3", "PySide6>=6.7"]
+>>>>>>> origin/master
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11", "pyinstaller>=6.10"]
 
 [project.scripts]
 tabconv = "tabconv.cli:main"
+<<<<<<< HEAD
+=======
+tabconv-gui = "tabconv.ui.app:main"
+>>>>>>> origin/master
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

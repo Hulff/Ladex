@@ -1,11 +1,12 @@
 # Tabular Text Converter
 
-An offline desktop-oriented converter for CSV, TSV, and whitespace-delimited text. This
-first milestone implements the GUI-independent import core and a small inspection CLI.
+An offline desktop-oriented converter for CSV, TSV, and whitespace-delimited text. It
+includes a desktop import and preview interface, backed by a GUI-independent import core.
 
 ```sh
 python -m pip install -e '.[dev]'
 tabconv example.txt
+tabconv-gui
 pytest
 ruff check .
 mypy src/tabconv
@@ -20,8 +21,7 @@ py -m pip install -e '.[dev]'
 .\scripts\build-windows.ps1
 ```
 
-The result is `dist\TabConv.exe`. It is a self-contained executable for the current
-CLI milestone; the future Qt desktop interface will use the same packaging target.
+The result is `dist\TabConv.exe`. It opens the desktop import and preview interface.
 Windows executables cannot be reliably built on Linux with PyInstaller, so the CI job
 uses `windows-latest` and uploads the generated artifact.
 
