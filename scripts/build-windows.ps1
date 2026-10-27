@@ -11,6 +11,6 @@ python -m PyInstaller `
     --name TabConv `
     --paths src `
     --collect-all charset_normalizer `
-    src/tabconv/__main__.py
+    src/tabconv_entry.py
 
 Write-Host 'Created dist\TabConv.exe'
