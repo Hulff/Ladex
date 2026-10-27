@@ -27,32 +27,35 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..core.batch import BatchHistory, BatchOperation
 from ..core.errors import TabConvError
-from ..core.history import DatasetHistory
 from ..core.models import Dataset, ExportOptions, ImportOptions
 from ..core.transforms import ConvertDecimalSeparator, RemoveColumns, ReplaceText
 from ..core.transforms.base import Operation
+from .batch_load_worker import BatchLoadWorker
 from .export_worker import ExportWorker
 from .history_worker import HistoryWorker
-from .load_worker import LoadWorker
 from .table_model import DatasetTableModel
 
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self._path: Path | None = None
+        self._paths: tuple[Path, ...] = ()
         self._thread: QThread | None = None
+        self._load_worker: BatchLoadWorker | None = None
         self._history_thread: QThread | None = None
-        self._active_history: DatasetHistory | None = None
+        self._history_worker: HistoryWorker | None = None
+        self._active_history: BatchHistory | None = None
         self._model = DatasetTableModel()
-        self._history: DatasetHistory | None = None
-        self._original: Dataset | None = None
-        self._current_dataset: Dataset | None = None
+        self._history: BatchHistory | None = None
+        self._original: tuple[Dataset, ...] | None = None
+        self._current_dataset: tuple[Dataset, ...] | None = None
         self._column_names: tuple[str, ...] | None = None
         self._row_policy = "error"
         self._pending_reload = False
         self._export_thread: QThread | None = None
+        self._export_worker: ExportWorker | None = None
         self._closing = False
         self.setWindowTitle("Tabular Text Converter")
         self.setMinimumSize(900, 580)
@@ -117,7 +120,7 @@ class MainWindow(QMainWindow):
         form.addRow(self.header)
         controls.addLayout(form)
         controls.addSpacing(12)
-        button = QPushButton("Open file…")
+        button = QPushButton("Open file(s)…")
         button.clicked.connect(self.choose_file)
         controls.addWidget(button)
         controls.addSpacing(10)
@@ -128,6 +131,10 @@ class MainWindow(QMainWindow):
         self.view_mode.addItem("Original", "original")
         self.view_mode.currentIndexChanged.connect(self._refresh_view)
         controls.addWidget(self.view_mode)
+        controls.addWidget(QLabel("Preview file"))
+        self.file_selector = QComboBox()
+        self.file_selector.currentIndexChanged.connect(self._refresh_view)
+        controls.addWidget(self.file_selector)
 
         history_buttons = QHBoxLayout()
         self.undo_button = QPushButton("Undo")
@@ -196,7 +203,9 @@ class MainWindow(QMainWindow):
         self.export_button.setEnabled(False)
         controls.addWidget(self.export_button)
         controls.addStretch()
-        hint = QLabel("Choose a file or drop a CSV, TSV, or TXT file anywhere in this window.")
+        hint = QLabel(
+            "Choose one or more files or drop CSV, TSV, or TXT files anywhere in this window."
+        )
         hint.setWordWrap(True)
         controls.addWidget(hint)
 
@@ -231,37 +240,41 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Ready")
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        if self._dropped_path(event.mimeData().urls()):
+        if self._dropped_paths(event.mimeData().urls()):
             event.acceptProposedAction()
 
     def dropEvent(self, event: QDropEvent) -> None:
-        path = self._dropped_path(event.mimeData().urls())
-        if path:
-            self.open_path(path)
+        paths = self._dropped_paths(event.mimeData().urls())
+        if paths:
+            self.open_paths(paths)
             event.acceptProposedAction()
 
     @staticmethod
-    def _dropped_path(urls: list[QUrl]) -> Path | None:
+    def _dropped_paths(urls: list[QUrl]) -> tuple[Path, ...]:
+        paths: list[Path] = []
         for url in urls:
             path = Path(url.toLocalFile())
             if path.suffix.lower() in {".csv", ".tsv", ".txt"} and path.is_file():
-                return path
-        return None
+                paths.append(path)
+        return tuple(paths)
 
     def choose_file(self) -> None:
-        name, _ = QFileDialog.getOpenFileName(
-            self, "Open tabular text", "", "Tabular text (*.csv *.tsv *.txt)"
+        names, _ = QFileDialog.getOpenFileNames(
+            self, "Open tabular text files", "", "Tabular text (*.csv *.tsv *.txt)"
         )
-        if name:
-            self.open_path(Path(name))
+        if names:
+            self.open_paths(tuple(Path(name) for name in names))
 
     def open_path(self, path: Path) -> None:
-        self._path = path
+        self.open_paths((path,))
+
+    def open_paths(self, paths: tuple[Path, ...]) -> None:
+        self._paths = paths
         self._row_policy = "error"
         self.reload()
 
     def reload(self) -> None:
-        if self._closing or self._path is None:
+        if self._closing or not self._paths:
             return
         if self._thread is not None:
             self._pending_reload = True
@@ -276,10 +289,11 @@ class MainWindow(QMainWindow):
             has_header=self.header.isChecked(),
             inconsistent_rows=self._row_policy,
         )
-        self.statusBar().showMessage(f"Loading {self._path.name}…")
+        self.statusBar().showMessage(f"Loading {len(self._paths)} file(s)…")
         self._show_progress(indeterminate=True)
         self._thread = QThread(self)
-        worker = LoadWorker(self._path, options)
+        worker = BatchLoadWorker(self._paths, options)
+        self._load_worker = worker
         worker.moveToThread(self._thread)
         self._thread.started.connect(worker.run)
         worker.loaded.connect(self.show_dataset)
@@ -295,16 +309,22 @@ class MainWindow(QMainWindow):
 
     def _clear_thread(self) -> None:
         self._thread = None
+        self._load_worker = None
         self._hide_progress_if_idle()
         self._finish_close_if_idle()
         if self._pending_reload and not self._closing:
             self._pending_reload = False
             self.reload()
 
-    def show_dataset(self, dataset: Dataset) -> None:
-        self._original = dataset
-        self._current_dataset = dataset
-        self._history = DatasetHistory(dataset)
+    def show_dataset(self, datasets: tuple[Dataset, ...]) -> None:
+        self._original = datasets
+        self._current_dataset = datasets
+        self._history = BatchHistory(datasets)
+        self.file_selector.blockSignals(True)
+        self.file_selector.clear()
+        for dataset in datasets:
+            self.file_selector.addItem(dataset.source.name if dataset.source else "Untitled")
+        self.file_selector.blockSignals(False)
         self._column_names = None
         self._refresh_view()
         self.empty.setVisible(False)
@@ -316,21 +336,25 @@ class MainWindow(QMainWindow):
         if self._history is None or self._original is None:
             self._set_transform_controls_enabled(False)
             return
-        processed = self._current_dataset
-        if processed is None:
+        processed_batch = self._current_dataset
+        if processed_batch is None or not processed_batch:
             return
+        file_index = min(max(self.file_selector.currentIndex(), 0), len(processed_batch) - 1)
+        processed = processed_batch[file_index]
+        original = self._original[file_index]
         self._sync_column_choices(processed.columns)
         show_original = self.view_mode.currentData() == "original"
-        dataset = self._original if show_original else processed
+        dataset = original if show_original else processed
         self._model.set_dataset(
             dataset,
-            original=self._original,
+            original=original,
             highlight_changes=not show_original,
         )
         self.summary.setText(
             f"{dataset.source}  •  {dataset.row_count:,} rows × "
             f"{dataset.column_count:,} columns"
-            f"  •  {'Original' if show_original else f'{len(self._history.operations)} change(s)'}"
+            f"  •  {len(processed_batch)} file(s)"
+            f"  •  {'Original' if show_original else f'{len(self._history.operations)} shared change(s)'}"
         )
         history_ready = self._history_thread is None
         self.undo_button.setEnabled(history_ready and self._history.can_undo)
@@ -369,21 +393,22 @@ class MainWindow(QMainWindow):
         self.decimal_button.setEnabled(enabled)
         self.remove_button.setEnabled(enabled and self.remove_columns.count() > 0)
 
-    def _apply_operation(self, operation: Operation) -> None:
-        self._queue_history_action("apply", operation)
+    def _apply_operation(self, operation: Operation, column_names: tuple[str, ...] | None) -> None:
+        self._queue_history_action("apply", operation, column_names)
 
     def replace_text(self) -> None:
         if not self.find_text.text():
             QMessageBox.information(self, "Find text", "Enter text to find first.")
             return
-        columns = self._selected_columns()
+        columns = self._selected_column_names()
         self._apply_operation(
             ReplaceText(
                 self.find_text.text(),
                 self.replacement_text.text(),
-                columns,
+                None,
                 self.case_sensitive.isChecked(),
-            )
+            ),
+            columns,
         )
 
     def convert_decimals(self) -> None:
@@ -392,25 +417,29 @@ class MainWindow(QMainWindow):
             operation = ConvertDecimalSeparator(
                 source,
                 target,
-                self._selected_columns(),
+                None,
                 self.thousands.currentData(),
             )
         except TabConvError as error:
             QMessageBox.warning(self, "Cannot apply transformation", str(error))
             return
-        self._apply_operation(operation)
+        self._apply_operation(operation, self._selected_column_names())
 
     def remove_selected_column(self) -> None:
         index = self.remove_columns.currentData()
-        if index is None:
+        datasets = self._current_dataset
+        if index is None or datasets is None:
             return
-        self._apply_operation(RemoveColumns((index,)))
+        file_index = max(self.file_selector.currentIndex(), 0)
+        name = datasets[file_index].columns[index]
+        self._apply_operation(RemoveColumns((index,)), (name,))
 
-    def _selected_columns(self) -> tuple[int, ...] | None:
+    def _selected_column_names(self) -> tuple[str, ...] | None:
         selected = self.operation_columns.currentData()
-        if selected is None or self._history is None:
+        if selected is None or self._current_dataset is None:
             return None
-        return (selected,)
+        file_index = max(self.file_selector.currentIndex(), 0)
+        return (self._current_dataset[file_index].columns[selected],)
 
     def undo(self) -> None:
         self._queue_history_action("undo")
@@ -422,7 +451,10 @@ class MainWindow(QMainWindow):
         self._queue_history_action("reset")
 
     def _queue_history_action(
-        self, action: str, operation: Operation | None = None
+        self,
+        action: str,
+        operation: Operation | None = None,
+        column_names: tuple[str, ...] | None = None,
     ) -> None:
         if self._history is None or self._history_thread is not None:
             return
@@ -432,7 +464,8 @@ class MainWindow(QMainWindow):
         )
         self._history_thread = QThread(self)
         self._active_history = self._history
-        worker = HistoryWorker(self._active_history, action, operation)
+        worker = HistoryWorker(self._active_history, action, operation, column_names)
+        self._history_worker = worker
         worker.moveToThread(self._history_thread)
         self._history_thread.started.connect(worker.run)
         worker.completed.connect(self._history_completed)
@@ -444,15 +477,17 @@ class MainWindow(QMainWindow):
         self._refresh_view()
         self._history_thread.start()
 
-    def _history_completed(self, history: DatasetHistory, dataset: Dataset) -> None:
+    def _history_completed(
+        self, history: BatchHistory, datasets: tuple[Dataset, ...]
+    ) -> None:
         if self._history is not history:
             return
-        self._current_dataset = dataset
+        self._current_dataset = datasets
         self.view_mode.setCurrentIndex(0)
         self._refresh_view()
         self.statusBar().showMessage("Transformation history updated")
 
-    def _history_failed(self, history: DatasetHistory, message: str) -> None:
+    def _history_failed(self, history: BatchHistory, message: str) -> None:
         if self._history is not history:
             return
         self.statusBar().showMessage("Transformation failed")
@@ -460,22 +495,35 @@ class MainWindow(QMainWindow):
 
     def _clear_history_thread(self) -> None:
         self._history_thread = None
+        self._history_worker = None
         self._active_history = None
         self._refresh_view()
         self._hide_progress_if_idle()
         self._finish_close_if_idle()
 
     @staticmethod
-    def _describe_operation(operation: Operation) -> str:
+    def _describe_operation(entry: BatchOperation) -> str:
+        operation = entry.operation
+        suffix = (
+            " in all matching columns"
+            if entry.column_names is not None
+            else " across all columns"
+        )
         if isinstance(operation, ReplaceText):
-            return f"Replace {operation.find!r} → {operation.replacement!r}"
+            return f"Replace {operation.find!r} → {operation.replacement!r}{suffix}"
         if isinstance(operation, ConvertDecimalSeparator):
-            return f"Convert decimal {operation.source_separator} → {operation.target_separator}"
+            return (
+                f"Convert decimal {operation.source_separator} → "
+                f"{operation.target_separator}{suffix}"
+            )
         if isinstance(operation, RemoveColumns):
-            return f"Remove column {operation.columns[0] + 1}"
+            names = ", ".join(repr(name) for name in entry.column_names or ())
+            return f"Remove column(s) named {names} from all files"
         return type(operation).__name__
 
-    def resolve_inconsistent_rows(self, issues: list[tuple[int, int, int]]) -> None:
+    def resolve_inconsistent_rows(
+        self, filename: str, issues: list[tuple[int, int, int]]
+    ) -> None:
         summary = "\n".join(
             f"Line {line}: expected {expected} fields, found {actual}"
             for line, expected, actual in issues[:8]
@@ -483,7 +531,7 @@ class MainWindow(QMainWindow):
         if len(issues) > 8:
             summary += f"\n…and {len(issues) - 8} more inconsistent row(s)."
         dialog = QMessageBox(self)
-        dialog.setWindowTitle("Rows have different field counts")
+        dialog.setWindowTitle(f"Rows have different field counts: {filename}")
         dialog.setText(
             "Choose how to handle inconsistent rows. The original file will not be changed."
         )
@@ -509,8 +557,11 @@ class MainWindow(QMainWindow):
             return
         filters = "CSV (*.csv);;TSV (*.tsv);;Text (*.txt);;Excel workbook (*.xlsx)"
         initial = "converted"
-        if self._path is not None:
-            initial = f"{self._path.stem}_converted"
+        if self._current_dataset is not None:
+            current_index = max(self.file_selector.currentIndex(), 0)
+            source = self._current_dataset[current_index].source
+            if source is not None:
+                initial = f"{source.stem}_converted"
         name, selected_filter = QFileDialog.getSaveFileName(
             self, "Export processed data", initial, filters
         )
@@ -543,7 +594,7 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 return
             overwrite = True
-        if self._path is not None and path.resolve() == self._path.resolve():
+        if any(path.resolve() == source.resolve() for source in self._paths):
             answer = QMessageBox.question(
                 self,
                 "Replace source file?",
@@ -600,14 +651,16 @@ class MainWindow(QMainWindow):
     ) -> None:
         if self._history is None:
             return
-        dataset = self._current_dataset
-        if dataset is None:
+        datasets = self._current_dataset
+        if not datasets:
             return
+        dataset = datasets[max(self.file_selector.currentIndex(), 0)]
         self.statusBar().showMessage(f"Exporting to {path.name}…")
         self._show_progress(indeterminate=False)
         self.progress_bar.setValue(0)
         self._export_thread = QThread(self)
         worker = ExportWorker(dataset, path, options, overwrite)
+        self._export_worker = worker
         worker.moveToThread(self._export_thread)
         self._export_thread.started.connect(worker.run)
         worker.progress.connect(self.progress_bar.setValue)
@@ -629,6 +682,7 @@ class MainWindow(QMainWindow):
 
     def _clear_export_thread(self) -> None:
         self._export_thread = None
+        self._export_worker = None
         self._hide_progress_if_idle()
         self._finish_close_if_idle()
 
@@ -654,11 +708,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Could not load file")
         QMessageBox.warning(self, "Could not load file", message)
 
-    def _load_progress(self, rows_read: int) -> None:
-        if self._path is not None:
-            self.statusBar().showMessage(
-                f"Loading {self._path.name}… {rows_read:,} rows read"
-            )
+    def _load_progress(self, filename: str, rows_read: int) -> None:
+        self.statusBar().showMessage(f"Loading {filename}… {rows_read:,} rows read")
 
     def _load_cancelled(self) -> None:
         self.statusBar().showMessage("Import cancelled")
