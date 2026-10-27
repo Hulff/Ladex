@@ -1,4 +1,4 @@
-name: Publish release assets
+name: Build and publish Ladex release
 
 on:
   push:
@@ -6,28 +6,73 @@ on:
 
 permissions:
   contents: write
-  actions: read
 
 jobs:
-  release:
+  linux:
     runs-on: ubuntu-24.04
     steps:
-      - name: Download Linux build artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install AppImage runtime compatibility
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libfuse2t64
+      - name: Install build dependencies
+        run: python -m pip install ".[dev]"
+      - name: Download AppImage tooling
+        run: |
+          curl -fsSL https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -o appimagetool
+          chmod +x appimagetool
+          APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --version
+      - name: Build executable and AppImage
+        run: ./scripts/build-linux.sh
+        env:
+          APPIMAGETOOL: ${{ github.workspace }}/appimagetool
+      - name: Smoke-test executable and AppImage
+        run: |
+          QT_QPA_PLATFORM=offscreen dist/Ladex --smoke-test
+          test -s dist/Ladex-x86_64.AppImage
+          APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=offscreen dist/Ladex-x86_64.AppImage --smoke-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ladex-linux-x86_64
+          path: |
+            dist/Ladex
+            dist/Ladex-x86_64.AppImage
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install build dependencies
+        run: python -m pip install ".[dev]"
+      - name: Build and smoke-test executable
+        shell: pwsh
+        run: |
+          .\scripts\build-windows.ps1
+          .\dist\Ladex.exe --smoke-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ladex-windows
+          path: dist/Ladex.exe
+
+  publish:
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
         with:
           name: Ladex-linux-x86_64
           path: release-assets/linux
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.run_id }}
-      - name: Download Windows build artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: Ladex-windows
           path: release-assets/windows
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.run_id }}
       - name: Create release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
