@@ -12,6 +12,9 @@ testable. A CLI uses the same API, so no data logic depends on Qt.
    transformations and export, Windows and Linux packaging workflows, and checks. The Linux
    executable and AppDir pass a smoke launch. The AppImage and Windows executable are built by
    their native CI jobs and were not built in this environment.
+5. **M5 (in progress):** open multiple datasets together, preview each file separately, and apply
+   shared column-name transformations with one undo/redo history. Exports currently target the
+   selected file.
 
 No input file is changed by parsing. Inconsistent rows carry their row number and require
 the UI offers padding, truncation, or cancellation. The parser retains complete datasets in

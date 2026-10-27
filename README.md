@@ -19,7 +19,10 @@ The CLI can inspect an input file with `tabconv example.txt`.
 
 ## Features
 
-- Open or drop CSV, TSV, and TXT files; select delimiter, encoding, and header behavior.
+- Open or drop one or more CSV, TSV, and TXT files; select delimiter, encoding, and header behavior.
+- Preview each file separately, even when files have different row counts or columns.
+- Apply corrections to matching column names across the batch; deleting a name removes all columns
+  with that name from every file. Export applies to the currently selected file.
 - Resolve inconsistent rows by padding short rows, truncating to the first row's width, or cancelling.
 - Replace literal text, convert decimal separators in numeric values, and remove columns.
 - Preview original or processed data, see changed cells, and inspect/undo/redo/reset operations.
