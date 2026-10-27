@@ -60,17 +60,12 @@ class MainWindow(QMainWindow):
         self._export_worker: ExportWorker | None = None
         self._closing = False
         self._language = "en-US"
-        self.setWindowTitle("Tabular Text Converter")
+        self.setWindowTitle("Ladex")
         self.setMinimumSize(900, 580)
         self.setAcceptDrops(True)
         self._build_ui()
 
     def _build_ui(self) -> None:
-        open_action = QAction(
-            "Open…", self, shortcut=QKeySequence(QKeySequence.StandardKey.Open)
-        )
-        open_action.triggered.connect(self.choose_file)
-        self.menuBar().addAction(open_action)
         self.undo_action = QAction(
             "Undo", self, shortcut=QKeySequence(QKeySequence.StandardKey.Undo)
         )
@@ -129,6 +124,9 @@ class MainWindow(QMainWindow):
         self.header.toggled.connect(self.reload)
         form.addRow(self.header)
         controls.addLayout(form)
+        self.open_button = QPushButton("Open file(s)…")
+        self.open_button.clicked.connect(self.choose_file)
+        controls.addWidget(self.open_button)
         controls.addSpacing(12)
         controls.addWidget(QLabel("Transformations"))
         self.view_mode = QComboBox()
@@ -206,8 +204,6 @@ class MainWindow(QMainWindow):
         self.export_all_button.clicked.connect(self.export_all)
         self.export_all_button.setEnabled(False)
         controls.addWidget(self.export_all_button)
-        self.remove_converted = QCheckBox("Remove _converted from filenames")
-        controls.addWidget(self.remove_converted)
         controls.addStretch()
         hint = QLabel(
             "Choose one or more files or drop CSV, TSV, or TXT files anywhere in this window."
@@ -257,7 +253,6 @@ class MainWindow(QMainWindow):
             "Tab": "Tabulação",
             "Whitespace": "Espaço em branco",
             "First row is a header": "A primeira linha é um cabeçalho",
-            "Open file…": "Abrir arquivo…",
             "Open file(s)…": "Abrir arquivo(s)…",
             "Transformations": "Transformações",
             "Processed": "Processado",
@@ -286,7 +281,6 @@ class MainWindow(QMainWindow):
             "Remove selected column": "Remover coluna selecionada",
             "Export processed data…": "Exportar dados processados…",
             "Export all files…": "Exportar todos os arquivos…",
-            "Remove _converted from filenames": "Remover _converted dos nomes dos arquivos",
             "Choose a file or drop a CSV, TSV, or TXT file anywhere in this window.": "Escolha ou arraste um arquivo CSV, TSV ou TXT para esta janela.",
             "Open or drop a tabular text file to see its preview.": "Abra ou arraste um arquivo de texto tabular para ver a prévia.",
             "No file selected": "Nenhum arquivo selecionado",
@@ -315,8 +309,7 @@ class MainWindow(QMainWindow):
             original = action.property("en_text") or action.text()
             action.setProperty("en_text", original)
             action.setText(({"Export…": "Exportar…"}.get(original, labels.get(original, original))) if pt else original)
-        self.menuBar().actions()[0].setText("Abrir…" if pt else "Open…")
-        self.setWindowTitle("Conversor de Texto Tabular" if pt else "Tabular Text Converter")
+        self.setWindowTitle("Ladex")
         self.statusBar().showMessage("Pronto" if pt else "Ready")
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
@@ -400,6 +393,7 @@ class MainWindow(QMainWindow):
         self._original = datasets
         self._current_dataset = datasets
         self._history = BatchHistory(datasets)
+        self.view_mode.setCurrentIndex(self.view_mode.findData("processed"))
         self.file_tabs.blockSignals(True)
         self.file_tabs.clear()
         self._models = []
@@ -656,10 +650,7 @@ class MainWindow(QMainWindow):
             current_index = max(self.file_tabs.currentIndex(), 0)
             source = self._current_dataset[current_index].source
             if source is not None:
-                initial = (
-                    source.stem if self.remove_converted.isChecked()
-                    else f"{source.stem}_converted"
-                )
+                initial = f"{source.stem}_converted"
         name, _ = QFileDialog.getSaveFileName(self, "Export processed data", initial + suffix)
         if not name:
             return
@@ -698,14 +689,13 @@ class MainWindow(QMainWindow):
         datasets = self._current_dataset
         if not datasets or self._export_thread is not None or self._history_thread is not None:
             return
+        export_settings = self._export_options()
+        if export_settings is None:
+            return
+        suffix, options, add_converted = export_settings
         output_dir = QFileDialog.getExistingDirectory(self, "Export all processed files")
         if not output_dir:
             return
-        suffix_options = {
-            ".csv": ExportOptions(delimiter=","),
-            ".tsv": ExportOptions(delimiter="\t"),
-            ".txt": ExportOptions(delimiter=" "),
-        }
         if any(dataset.source is None for dataset in datasets):
             QMessageBox.warning(self, "Export all files", "A source filename is missing.")
             return
@@ -715,9 +705,9 @@ class MainWindow(QMainWindow):
             source = dataset.source
             assert source is not None
             stem = source.stem
-            if not self.remove_converted.isChecked():
+            if add_converted:
                 stem += "_converted"
-            targets.append(output_path / f"{stem}{source.suffix.lower()}")
+            targets.append(output_path / f"{stem}{suffix}")
         if len({target.name.casefold() for target in targets}) != len(targets):
             QMessageBox.warning(self, "Export all files", "Files from different folders have the same output name.")
             return
@@ -738,8 +728,9 @@ class MainWindow(QMainWindow):
         worker = BatchExportWorker(
             datasets,
             output_path,
-            suffix_options,
-            self.remove_converted.isChecked(),
+            suffix,
+            options,
+            not add_converted,
         )
         self._export_worker = worker
         worker.moveToThread(self._export_thread)
@@ -767,7 +758,7 @@ class MainWindow(QMainWindow):
             format_choice.addItem(label, suffix)
         form.addRow("Format", format_choice)
         add_converted = QCheckBox("Add _converted to the filename")
-        add_converted.setChecked(not self.remove_converted.isChecked())
+        add_converted.setChecked(True)
         form.addRow(add_converted)
         delimiter = QComboBox()
         delimiter.addItem("Comma (,)", ",")

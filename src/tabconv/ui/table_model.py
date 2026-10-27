@@ -61,7 +61,7 @@ class DatasetTableModel(QAbstractTableModel):
                 and self._dataset.rows[index.row()][index.column()]
                 != self._original.rows[index.row()][source_column]
             ):
-                return QBrush(QColor("#fff0b3"))
+                return QBrush(QColor("#45405c"))
         return None
 
     def headerData(

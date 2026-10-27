@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=Tabular Text Converter
+Name=Ladex
 Comment=Import, transform, and export tabular text files offline
 Exec=AppRun
 Icon=tabconv

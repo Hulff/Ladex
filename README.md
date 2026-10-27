@@ -1,6 +1,6 @@
-# Tabular Text Converter
+# Ladex
 
-TabConv is an offline desktop app and command-line tool for previewing and cleaning CSV, TSV, and
+Ladex is an offline desktop app and command-line tool for previewing and cleaning CSV, TSV, and
 plain-text tables. Imported values stay as strings, and importing or transforming data never edits
 the source files.
 

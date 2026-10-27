@@ -10,6 +10,8 @@ python -m PyInstaller `
     --onefile `
     --windowed `
     --name TabConv `
+    --icon icon/favicon.ico `
+    --add-data "icon/favicon.ico;." `
     --paths src `
     --collect-all charset_normalizer `
     --collect-all openpyxl `

@@ -20,13 +20,15 @@ class BatchExportWorker(QObject):
         self,
         datasets: tuple[Dataset, ...],
         output_dir: Path,
-        options_by_suffix: dict[str, ExportOptions],
+        suffix: str,
+        options: ExportOptions,
         remove_converted: bool,
     ) -> None:
         super().__init__()
         self._datasets = datasets
         self._output_dir = output_dir
-        self._options_by_suffix = options_by_suffix
+        self._suffix = suffix
+        self._options = options
         self._remove_converted = remove_converted
 
     @Slot()
@@ -38,15 +40,14 @@ class BatchExportWorker(QObject):
                 source = dataset.source
                 if source is None:
                     raise TabConvError("Cannot determine a filename for one of the files.")
-                suffix = source.suffix.lower()
                 stem = source.stem
                 if not self._remove_converted:
                     stem += "_converted"
-                output = self._output_dir / f"{stem}{suffix}"
+                output = self._output_dir / f"{stem}{self._suffix}"
                 write_dataset(
                     dataset,
                     output,
-                    self._options_by_suffix[suffix],
+                    self._options,
                     overwrite=True,
                     cancelled=lambda: QThread.currentThread().isInterruptionRequested(),
                     progress=lambda value: self.progress.emit(
