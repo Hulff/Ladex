@@ -4,7 +4,7 @@ if ($env:OS -ne 'Windows_NT') {
     throw 'Build this target on Windows. PyInstaller does not cross-compile Windows executables.'
 }
 
-py -m PyInstaller `
+python -m PyInstaller `
     --noconfirm `
     --clean `
     --onefile `
