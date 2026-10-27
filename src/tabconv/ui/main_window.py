@@ -58,6 +58,7 @@ class MainWindow(QMainWindow):
         self._export_thread: QThread | None = None
         self._export_worker: ExportWorker | None = None
         self._closing = False
+        self._language = "en-US"
         self.setWindowTitle("Tabular Text Converter")
         self.setMinimumSize(900, 580)
         self.setAcceptDrops(True)
@@ -99,6 +100,13 @@ class MainWindow(QMainWindow):
         sidebar.setFrameShape(QFrame.Shape.StyledPanel)
         sidebar.setFixedWidth(245)
         controls = QVBoxLayout(sidebar)
+        self.language = QComboBox()
+        self.language.addItem("English (US)", "en-US")
+        self.language.addItem("Português (Brasil)", "pt-BR")
+        self.language.currentIndexChanged.connect(self._change_language)
+        language_form = QFormLayout()
+        language_form.addRow("Language", self.language)
+        controls.addLayout(language_form)
         controls.addWidget(QLabel("Import settings"))
         form = QFormLayout()
         self.delimiter = QComboBox()
@@ -232,6 +240,80 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.progress_bar)
         self.statusBar().addPermanentWidget(self.cancel_button)
         self.statusBar().showMessage("Ready")
+
+    def _change_language(self) -> None:
+        self._language = self.language.currentData()
+        pt = self._language == "pt-BR"
+        labels = {
+            "Import settings": "Configurações de importação",
+            "Language": "Idioma",
+            "Delimiter": "Delimitador",
+            "Auto-detect": "Detectar automaticamente",
+            "Comma (, )": "Vírgula (,)",
+            "Comma (,)": "Vírgula (,)",
+            "Semicolon (;)": "Ponto e vírgula (;) ",
+            "Tab": "Tabulação",
+            "Whitespace": "Espaço em branco",
+            "First row is a header": "A primeira linha é um cabeçalho",
+            "Open file…": "Abrir arquivo…",
+            "Open file(s)…": "Abrir arquivo(s)…",
+            "Transformations": "Transformações",
+            "Processed": "Processado",
+            "Original": "Original",
+            "Undo": "Desfazer",
+            "Redo": "Refazer",
+            "Reset changes": "Redefinir alterações",
+            "Applied operations": "Operações aplicadas",
+            "All columns": "Todas as colunas",
+            "Find": "Localizar",
+            "Text to find": "Texto a localizar",
+            "Replace": "Substituir",
+            "Replacement": "Substituição",
+            "Case sensitive": "Diferenciar maiúsculas/minúsculas",
+            "Replace text": "Substituir texto",
+            "Decimal": "Decimal",
+            "Point → comma": "Ponto → vírgula",
+            "Comma → point": "Vírgula → ponto",
+            "Thousands": "Milhares",
+            "None": "Nenhum",
+            "Period": "Ponto",
+            "Space": "Espaço",
+            "Comma": "Vírgula",
+            "Convert decimals": "Converter decimais",
+            "Columns to remove": "Colunas para remover",
+            "Remove selected column": "Remover coluna selecionada",
+            "Export processed data…": "Exportar dados processados…",
+            "Choose a file or drop a CSV, TSV, or TXT file anywhere in this window.": "Escolha ou arraste um arquivo CSV, TSV ou TXT para esta janela.",
+            "Open or drop a tabular text file to see its preview.": "Abra ou arraste um arquivo de texto tabular para ver a prévia.",
+            "No file selected": "Nenhum arquivo selecionado",
+            "Cancel": "Cancelar",
+            "Ready": "Pronto",
+        }
+        widgets = self.findChildren(QWidget)
+        for widget in widgets:
+            if isinstance(widget, (QPushButton, QCheckBox, QLabel)):
+                original = widget.property("en_text") or widget.text()
+                widget.setProperty("en_text", original)
+                widget.setText(labels.get(original, original) if pt else original)
+            elif isinstance(widget, QLineEdit):
+                original = widget.property("en_placeholder") or widget.placeholderText()
+                widget.setProperty("en_placeholder", original)
+                translated = {"Text to find": "Texto a localizar", "Replacement": "Substituição"}
+                widget.setPlaceholderText(translated.get(original, original) if pt else original)
+            elif isinstance(widget, QComboBox):
+                for index in range(widget.count()):
+                    original = widget.itemData(index, Qt.ItemDataRole.UserRole + 1)
+                    if original is None:
+                        original = widget.itemText(index)
+                        widget.setItemData(index, original, Qt.ItemDataRole.UserRole + 1)
+                    widget.setItemText(index, labels.get(original, original) if pt else original)
+        for action in (self.undo_action, self.redo_action, self.export_action, self.export_shortcut_action):
+            original = action.property("en_text") or action.text()
+            action.setProperty("en_text", original)
+            action.setText(({"Export…": "Exportar…"}.get(original, labels.get(original, original))) if pt else original)
+        self.menuBar().actions()[0].setText("Abrir…" if pt else "Open…")
+        self.setWindowTitle("Conversor de Texto Tabular" if pt else "Tabular Text Converter")
+        self.statusBar().showMessage("Pronto" if pt else "Ready")
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if self._dropped_paths(event.mimeData().urls()):
