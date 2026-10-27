@@ -16,6 +16,16 @@ def test_guide_example_with_quoted_header_and_spaces() -> None:
     assert data.rows == (("11.214", "1245,3"), ("12.415", "2256,7"))
 
 
+@pytest.mark.parametrize("filename", ["CuComerc.txt", "CuComercUltrSo.txt"])
+def test_example_tab_files_auto_detect_without_losing_padding(filename: str) -> None:
+    path = Path(__file__).parents[1] / "test_files" / filename
+    data = read_file(path)
+    assert data.column_count == 3
+    assert data.row_count == 911
+    assert data.columns == ("Wavelength (nm)", "Absorbance (AU)", "Std.Dev.")
+    assert data.rows[0][0] == "     190.0"
+
+
 def test_whitespace_tabs_and_quoted_values() -> None:
     assert tokenize_whitespace('one\t  "two words"    three') == ["one", "two words", "three"]
 

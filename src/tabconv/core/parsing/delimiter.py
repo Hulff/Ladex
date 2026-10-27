@@ -1,3 +1,5 @@
+import csv
+
 from .whitespace import tokenize_whitespace
 
 
@@ -8,18 +10,29 @@ def detect_delimiter(lines: list[str]) -> str:
         return "whitespace"
     scores: dict[str, int] = {}
     for candidate in (",", "\t", ";"):
-        widths = [_csv_width(line, candidate) for line in nonempty]
+        try:
+            widths = [_csv_width(line, candidate) for line in nonempty]
+        except csv.Error:
+            continue
         if min(widths) > 1 and len(set(widths)) == 1:
             scores[candidate] = widths[0]
+    # Tabular files with padded fields can also look whitespace-delimited. Prefer a
+    # consistent explicit separator in that case to preserve each field's contents.
+    if scores:
+        if len(scores) == 1:
+            return next(iter(scores))
+        from ..errors import UnsupportedFormatError
+
+        raise UnsupportedFormatError(
+            "Delimiter detection is ambiguous; select a delimiter manually"
+        )
     ws_widths = [len(tokenize_whitespace(line)) for line in nonempty]
     if min(ws_widths) > 1 and len(set(ws_widths)) == 1:
-        scores["whitespace"] = ws_widths[0]
-    if len(scores) != 1:
-        from ..errors import UnsupportedFormatError
-        raise UnsupportedFormatError("Delimiter detection is ambiguous; select a delimiter manually")
-    return next(iter(scores))
+        return "whitespace"
+    from ..errors import UnsupportedFormatError
+
+    raise UnsupportedFormatError("Delimiter detection is ambiguous; select a delimiter manually")
 
 
 def _csv_width(line: str, delimiter: str) -> int:
-    import csv
     return len(next(csv.reader([line], delimiter=delimiter, strict=True)))
