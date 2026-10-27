@@ -1,4 +1,4 @@
-coname: Build Windows executable
+name: Build Windows executable
 
 on:
   workflow_dispatch:
