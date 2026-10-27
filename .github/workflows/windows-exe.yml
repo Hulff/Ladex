@@ -23,9 +23,9 @@ jobs:
         run: .\scripts\build-windows.ps1
       - name: Smoke-test executable
         shell: pwsh
-        run: .\dist\TabConv.exe --smoke-test
+        run: .\dist\Ladex.exe --smoke-test
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
-          name: TabConv-windows
-          path: dist/TabConv.exe
+          name: Ladex-windows
+          path: dist/Ladex.exe

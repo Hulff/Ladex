@@ -9,7 +9,7 @@ python -m PyInstaller `
     --clean `
     --onefile `
     --windowed `
-    --name TabConv `
+    --name Ladex `
     --icon icon/favicon.ico `
     --add-data "icon/favicon.ico;." `
     --paths src `
@@ -18,4 +18,4 @@ python -m PyInstaller `
     --collect-all PySide6 `
     src/tabconv_gui_entry.py
 
-Write-Host 'Created dist\TabConv.exe'
+Write-Host 'Created dist\Ladex.exe'

@@ -75,7 +75,7 @@ py -m pip install -e '.[dev]'
 .\\scripts\\build-windows.ps1
 ```
 
-This creates `dist\\TabConv.exe`.
+This creates `dist\\Ladex.exe`.
 
 On Linux, install the project and PyInstaller, then run:
 
@@ -84,6 +84,6 @@ python -m pip install -e '.[dev]'
 ./scripts/build-linux.sh
 ```
 
-This creates `dist/TabConv` and `dist/TabConv.AppDir`. If `appimagetool` is installed, the script
+This creates `dist/Ladex` and `dist/Ladex.AppDir`. If `appimagetool` is installed, the script
 also creates an AppImage. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design details and
 current limitations.

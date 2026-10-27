@@ -1,0 +1,41 @@
+name: Publish release assets
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Linux build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Ladex-linux-x86_64
+          path: release-assets/linux
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+      - name: Download Windows build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Ladex-windows
+          path: release-assets/windows
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+      - name: Create release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG_NAME" \
+            release-assets/linux/Ladex \
+            release-assets/linux/Ladex-x86_64.AppImage \
+            release-assets/windows/Ladex.exe \
+            --title "Ladex $TAG_NAME" \
+            --generate-notes

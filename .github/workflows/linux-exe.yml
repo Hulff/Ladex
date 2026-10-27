@@ -33,15 +33,15 @@ jobs:
         env:
           APPIMAGETOOL: ${{ github.workspace }}/appimagetool
       - name: Smoke-test executable
-        run: QT_QPA_PLATFORM=offscreen dist/TabConv --smoke-test
+        run: QT_QPA_PLATFORM=offscreen dist/Ladex --smoke-test
       - name: Verify and smoke-test AppImage
         run: |
-          test -s dist/TabConv-x86_64.AppImage
-          APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=offscreen dist/TabConv-x86_64.AppImage --smoke-test
+          test -s dist/Ladex-x86_64.AppImage
+          APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=offscreen dist/Ladex-x86_64.AppImage --smoke-test
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: TabConv-linux-x86_64
+          name: Ladex-linux-x86_64
           path: |
-            dist/TabConv
-            dist/TabConv-x86_64.AppImage
+            dist/Ladex
+            dist/Ladex-x86_64.AppImage

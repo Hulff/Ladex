@@ -40,9 +40,12 @@ def _catppuccin_mocha_stylesheet() -> str:
     QPushButton:pressed { background-color: #585b70; }
     QPushButton:disabled { color: #6c7086; background-color: #181825; }
     QComboBox QAbstractItemView { background-color: #313244; selection-background-color: #585b70; }
-    QCheckBox::indicator { width: 15px; height: 15px; }
+    QCheckBox::indicator { width: 15px; height: 15px; border-radius: 3px; }
     QCheckBox::indicator:unchecked { background: #313244; border: 1px solid #6c7086; }
-    QCheckBox::indicator:checked { background: #cba6f7; border: 1px solid #cba6f7; }
+    QCheckBox::indicator:checked {
+        background: #cba6f7; border: 1px solid #cba6f7;
+        image: url(data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M3 8l3.2 3.2L13 4.5" fill="none" stroke="%231e1e2e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>);
+    }
     QHeaderView::section { background-color: #181825; color: #cdd6f4; padding: 5px; border: 1px solid #45475a; }
     QTableView { alternate-background-color: #242436; gridline-color: #45475a; }
     QTableView::item:selected { background-color: #585b70; color: #cdd6f4; }
