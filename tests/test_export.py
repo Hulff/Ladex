@@ -37,6 +37,17 @@ def test_xlsx_cells_are_written_as_strings(tmp_path: Path, dataset: Dataset) -> 
     workbook.close()
 
 
+def test_txt_quotes_headers_but_leaves_data_rows_unquoted(tmp_path: Path) -> None:
+    dataset = Dataset(("column name", "value"), (("two words", "3"),))
+    path = tmp_path / "result.txt"
+    write_dataset(
+        dataset,
+        path,
+        ExportOptions(delimiter=" ", line_ending="\r\n"),
+    )
+    assert path.read_bytes() == b'"column name" "value"\r\ntwo words 3\r\n'
+
+
 def test_existing_file_is_not_overwritten_without_confirmation(
     tmp_path: Path, dataset: Dataset
 ) -> None:

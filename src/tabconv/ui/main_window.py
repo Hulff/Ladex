@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QStatusBar,
     QTableView,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -47,7 +48,7 @@ class MainWindow(QMainWindow):
         self._history_thread: QThread | None = None
         self._history_worker: HistoryWorker | None = None
         self._active_history: BatchHistory | None = None
-        self._model = DatasetTableModel()
+        self._models: list[DatasetTableModel] = []
         self._history: BatchHistory | None = None
         self._original: tuple[Dataset, ...] | None = None
         self._current_dataset: tuple[Dataset, ...] | None = None
@@ -131,11 +132,6 @@ class MainWindow(QMainWindow):
         self.view_mode.addItem("Original", "original")
         self.view_mode.currentIndexChanged.connect(self._refresh_view)
         controls.addWidget(self.view_mode)
-        controls.addWidget(QLabel("Preview file"))
-        self.file_selector = QComboBox()
-        self.file_selector.currentIndexChanged.connect(self._refresh_view)
-        controls.addWidget(self.file_selector)
-
         history_buttons = QHBoxLayout()
         self.undo_button = QPushButton("Undo")
         self.undo_button.clicked.connect(self.undo)
@@ -212,14 +208,12 @@ class MainWindow(QMainWindow):
         preview = QVBoxLayout()
         self.empty = QLabel("Open or drop a tabular text file to see its preview.")
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.table = QTableView()
-        self.table.setModel(self._model)
-        self.table.setAlternatingRowColors(True)
-        self.table.setSortingEnabled(False)
-        self.table.setVisible(False)
+        self.file_tabs = QTabWidget()
+        self.file_tabs.currentChanged.connect(self._refresh_view)
+        self.file_tabs.setVisible(False)
         self.summary = QLabel("No file selected")
         preview.addWidget(self.empty, 1)
-        preview.addWidget(self.table, 1)
+        preview.addWidget(self.file_tabs, 1)
         preview.addWidget(self.summary)
         sidebar_scroll = QScrollArea()
         sidebar_scroll.setWidgetResizable(True)
@@ -320,15 +314,22 @@ class MainWindow(QMainWindow):
         self._original = datasets
         self._current_dataset = datasets
         self._history = BatchHistory(datasets)
-        self.file_selector.blockSignals(True)
-        self.file_selector.clear()
+        self.file_tabs.blockSignals(True)
+        self.file_tabs.clear()
+        self._models = []
         for dataset in datasets:
-            self.file_selector.addItem(dataset.source.name if dataset.source else "Untitled")
-        self.file_selector.blockSignals(False)
+            model = DatasetTableModel()
+            table = QTableView()
+            table.setModel(model)
+            table.setAlternatingRowColors(True)
+            table.setSortingEnabled(False)
+            self._models.append(model)
+            self.file_tabs.addTab(table, dataset.source.name if dataset.source else "Untitled")
+        self.file_tabs.blockSignals(False)
         self._column_names = None
         self._refresh_view()
         self.empty.setVisible(False)
-        self.table.setVisible(True)
+        self.file_tabs.setVisible(True)
         self.export_button.setEnabled(True)
         self.statusBar().showMessage("Preview ready")
 
@@ -339,17 +340,20 @@ class MainWindow(QMainWindow):
         processed_batch = self._current_dataset
         if processed_batch is None or not processed_batch:
             return
-        file_index = min(max(self.file_selector.currentIndex(), 0), len(processed_batch) - 1)
+        file_index = min(max(self.file_tabs.currentIndex(), 0), len(processed_batch) - 1)
         processed = processed_batch[file_index]
         original = self._original[file_index]
-        self._sync_column_choices(processed.columns)
         show_original = self.view_mode.currentData() == "original"
+        for index, (source_dataset, result_dataset) in enumerate(
+            zip(self._original, processed_batch, strict=True)
+        ):
+            self._models[index].set_dataset(
+                source_dataset if show_original else result_dataset,
+                original=source_dataset,
+                highlight_changes=not show_original,
+            )
         dataset = original if show_original else processed
-        self._model.set_dataset(
-            dataset,
-            original=original,
-            highlight_changes=not show_original,
-        )
+        self._sync_column_choices(processed.columns)
         self.summary.setText(
             f"{dataset.source}  •  {dataset.row_count:,} rows × "
             f"{dataset.column_count:,} columns"
@@ -430,7 +434,7 @@ class MainWindow(QMainWindow):
         datasets = self._current_dataset
         if index is None or datasets is None:
             return
-        file_index = max(self.file_selector.currentIndex(), 0)
+        file_index = max(self.file_tabs.currentIndex(), 0)
         name = datasets[file_index].columns[index]
         self._apply_operation(RemoveColumns((index,)), (name,))
 
@@ -438,7 +442,7 @@ class MainWindow(QMainWindow):
         selected = self.operation_columns.currentData()
         if selected is None or self._current_dataset is None:
             return None
-        file_index = max(self.file_selector.currentIndex(), 0)
+        file_index = max(self.file_tabs.currentIndex(), 0)
         return (self._current_dataset[file_index].columns[selected],)
 
     def undo(self) -> None:
@@ -558,7 +562,7 @@ class MainWindow(QMainWindow):
         filters = "CSV (*.csv);;TSV (*.tsv);;Text (*.txt);;Excel workbook (*.xlsx)"
         initial = "converted"
         if self._current_dataset is not None:
-            current_index = max(self.file_selector.currentIndex(), 0)
+            current_index = max(self.file_tabs.currentIndex(), 0)
             source = self._current_dataset[current_index].source
             if source is not None:
                 initial = f"{source.stem}_converted"
@@ -654,7 +658,7 @@ class MainWindow(QMainWindow):
         datasets = self._current_dataset
         if not datasets:
             return
-        dataset = datasets[max(self.file_selector.currentIndex(), 0)]
+        dataset = datasets[max(self.file_tabs.currentIndex(), 0)]
         self.statusBar().showMessage(f"Exporting to {path.name}…")
         self._show_progress(indeterminate=False)
         self.progress_bar.setValue(0)
