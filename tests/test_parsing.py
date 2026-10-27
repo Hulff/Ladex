@@ -7,7 +7,6 @@ from tabconv.core.models import ImportOptions
 from tabconv.core.parsing.reader import parse_text, read_file
 from tabconv.core.parsing.whitespace import tokenize_whitespace
 
-
 EXAMPLE = '"collum 1" "col2"\n11.214     1245,3\n12.415     2256,7\n'
 
 
@@ -46,6 +45,18 @@ def test_inconsistent_rows_are_reported() -> None:
     with pytest.raises(InconsistentRowsError) as caught:
         parse_text("a,b\n1,2,3\n", ImportOptions(delimiter=","))
     assert caught.value.issues == [(2, 2, 3)]
+
+
+def test_inconsistent_rows_can_be_padded() -> None:
+    data = parse_text("name,value\nshort\nwide,2,extra\n", ImportOptions(delimiter=",", inconsistent_rows="pad"))
+    assert data.columns == ("name", "value", "Column 3")
+    assert data.rows == (("short", "", ""), ("wide", "2", "extra"))
+
+
+def test_inconsistent_rows_can_be_truncated() -> None:
+    data = parse_text("name,value\nshort\nwide,2,extra\n", ImportOptions(delimiter=",", inconsistent_rows="truncate"))
+    assert data.columns == ("name", "value")
+    assert data.rows == (("short",), ("wide", "2"))
 
 
 def test_unclosed_quote_is_reported() -> None:

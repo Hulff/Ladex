@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Tabular Text Converter
+Comment=Import, transform, and export tabular text files offline
+Exec=AppRun
+Icon=tabconv
+Terminal=false
+Type=Application
+Categories=Office;Utility;
+MimeType=text/csv;text/tab-separated-values;

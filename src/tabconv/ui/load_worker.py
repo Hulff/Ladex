@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Signal, Slot
 
-from ..core.errors import TabConvError
+from ..core.errors import InconsistentRowsError, OperationCancelledError, TabConvError
 from ..core.models import ImportOptions
 from ..core.parsing.reader import read_file
 
@@ -12,6 +12,8 @@ from ..core.parsing.reader import read_file
 class LoadWorker(QObject):
     loaded = Signal(object)
     failed = Signal(str)
+    inconsistent = Signal(object)
+    cancelled = Signal()
     finished = Signal()
 
     def __init__(self, path: Path, options: ImportOptions) -> None:
@@ -22,7 +24,17 @@ class LoadWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
-            self.loaded.emit(read_file(self._path, self._options))
+            self.loaded.emit(
+                read_file(
+                    self._path,
+                    self._options,
+                    cancelled=lambda: QThread.currentThread().isInterruptionRequested(),
+                )
+            )
+        except InconsistentRowsError as error:
+            self.inconsistent.emit(error.issues)
+        except OperationCancelledError:
+            self.cancelled.emit()
         except (OSError, TabConvError) as error:
             self.failed.emit(str(error))
         finally:

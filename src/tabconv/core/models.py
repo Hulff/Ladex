@@ -22,3 +22,12 @@ class ImportOptions:
     delimiter: str | None = None
     encoding: str | None = None
     has_header: bool = True
+    inconsistent_rows: str = "error"
+
+
+@dataclass(frozen=True, slots=True)
+class ExportOptions:
+    delimiter: str | None = None
+    include_header: bool = True
+    line_ending: str = "\n"
+    encoding: str = "utf-8"

@@ -11,6 +11,9 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("TabConv")
     window = MainWindow()
+    if "--smoke-test" in sys.argv:
+        window.close()
+        return 0
     window.show()
     return app.exec()
 

@@ -8,9 +8,11 @@ python -m PyInstaller `
     --noconfirm `
     --clean `
     --onefile `
+    --windowed `
     --name TabConv `
     --paths src `
     --collect-all charset_normalizer `
+    --collect-all openpyxl `
     --collect-all PySide6 `
     src/tabconv_gui_entry.py
 

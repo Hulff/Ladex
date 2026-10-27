@@ -1,0 +1,37 @@
+name: Build Linux executable and AppImage
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install build dependencies
+        run: python -m pip install ".[dev]"
+      - name: Download AppImage tooling
+        run: |
+          curl -fsSL https://github.com/AppImage/appimagetool/releases/latest/download/appimagetool-x86_64.AppImage -o appimagetool
+          chmod +x appimagetool
+      - name: Build executable and AppImage
+        run: ./scripts/build-linux.sh
+        env:
+          APPIMAGETOOL: ${{ github.workspace }}/appimagetool
+      - name: Smoke-test executable
+        run: QT_QPA_PLATFORM=offscreen dist/TabConv --smoke-test
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TabConv-linux-x86_64
+          path: |
+            dist/TabConv
+            dist/TabConv-x86_64.AppImage

@@ -1,3 +1,3 @@
-from .reader import read_file, parse_text
+from .reader import parse_text, read_file
 
-__all__ = ["read_file", "parse_text"]
+__all__ = ["parse_text", "read_file"]
