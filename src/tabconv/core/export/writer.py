@@ -47,6 +47,8 @@ def write_dataset(
             temp_path = Path(temporary.name)
         if suffix == ".xlsx":
             _write_xlsx(dataset, temp_path, options, cancelled, progress)
+        elif suffix == ".txt":
+            _write_plain_text(dataset, temp_path, options, delimiter or "", cancelled, progress)
         else:
             _write_delimited(
                 dataset,
@@ -95,6 +97,38 @@ def _write_delimited(
             _report_progress(number, total, progress)
     if total == 0:
         _report_progress(0, total, progress)
+
+
+def _write_plain_text(
+    dataset: Dataset,
+    path: Path,
+    options: ExportOptions,
+    delimiter: str,
+    cancelled: Callable[[], bool] | None,
+    progress: Callable[[int], None] | None,
+) -> None:
+    total = dataset.row_count + int(options.include_header)
+    with path.open("w", encoding=options.encoding, newline="") as output:
+        number = 0
+        if options.include_header:
+            if cancelled and cancelled():
+                raise OperationCancelledError("Export cancelled")
+            headers = (_quote_header(value) for value in dataset.columns)
+            output.write(delimiter.join(headers) + options.line_ending)
+            number += 1
+            _report_progress(number, total, progress)
+        for row in dataset.rows:
+            if cancelled and cancelled():
+                raise OperationCancelledError("Export cancelled")
+            output.write(delimiter.join(row) + options.line_ending)
+            number += 1
+            _report_progress(number, total, progress)
+    if total == 0:
+        _report_progress(0, total, progress)
+
+
+def _quote_header(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
 
 
 def _write_xlsx(
